@@ -120,7 +120,9 @@ class MarkupGenerator {
       }
       case BLOCK_TYPE.CODE: {
         this.insertLineBreaks(1);
-        this.output.push(CODE_INDENT + this.renderBlockContent(block) + '\n');
+        // render code block using triple backtick and text directly without
+        // additional processing
+        this.output.push('```\n' + block.getText() + '\n```\n')
         break;
       }
       default: {
@@ -183,6 +185,37 @@ class MarkupGenerator {
     }
     let charMetaList = block.getCharacterList();
     let entityPieces = getEntityRanges(text, charMetaList);
+
+    const entityKey = block.getEntityAt(0);
+    if (entityKey && blockType === 'atomic') {
+      // custom entity renderer
+      const entity = this.contentState.getEntity(entityKey);
+      const data = entity.getData()
+      switch (entity.getType()) {
+        case 'DIVIDER':
+          return '---'
+        case 'GITHUB_GIST': {
+          const scriptTemplate = `<script type='text/javascript' src='${data.url}.js'></script>`
+          return `<iframe srcdoc="${scriptTemplate}"></iframe>`
+        }
+        case 'IMAGE': {
+          const caption = block.getText();
+          if (caption.trim() === '') {
+            // no caption
+            return `![](${data.url})`
+          }
+
+          return [
+            '<figure>',
+            `  <img src="${data.url}" />`,
+            `  <figcaption>${caption}</figcaption>`,
+            '<figure>',
+          ].join('\n')
+        }
+        default:
+      }
+    }
+
     return entityPieces
       .map(([entityKey, stylePieces]) => {
         let content = stylePieces
@@ -206,9 +239,9 @@ class MarkupGenerator {
               // TODO: encode `~`?
               content = `~~${content}~~`;
             }
-            if (style.has(CODE)) {
-              content =
-                blockType === BLOCK_TYPE.CODE ? content : '`' + content + '`';
+            if (style.has('INLINE_CODE')) {
+              // no need to escape text inside <code> tag
+              content = '`' + text + '`';
             }
             return content;
           })
